@@ -1,50 +1,64 @@
 import socket
 import ssl
 import os
+import time
 import threading
+import signal
 
-def start_listener(ip, port, cert_path, key_path, ca_path):
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as recv:
-        recv.bind((ip, port))
-        recv.listen()
+def create_tls_context(certfile, keyfile, cafile):
+    context = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile=cafile)
+    context.load_cert_chain(certfile=certfile, keyfile=keyfile)
+    return context
 
-        tls_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
-        tls_context.verify_mode = ssl.CERT_REQUIRED
-        tls_context.load_cert_chain(certfile=cert_path, keyfile=key_path)
-        tls_context.load_verify_locations(cafile=ca_path)
+def tls_connect_and_send_periodically(host, port, context: ssl.SSLContext, message, interval):
+    print(f"Connecting to {host} on port {port}...")
+    with socket.create_connection((host, port), timeout=2) as raw_socket:
+        print(f"Wrapping raw socket in TLS...")
+        with context.wrap_socket(raw_socket, server_hostname=host) as secure_socket:
+            print(f"TLS handshake complete, let's send some data!")
+            while True:
+                try:
+                    secure_socket.sendall(message.encode())
+                    print(f"Sent message to {host}:{port}")
+                except Exception as e:
+                    print(f"Error sending message: {e}")
+                    break
+                time.sleep(interval)  # Pause for 'interval' seconds
+    print("Exiting for some reason")
+
+def shutdown():
+    exit(0)
+
+def main():
+    signal.signal(signal.SIGTERM, shutdown)
+    CERTIFICATE_PATH = os.environ["CERTIFICATE_PATH"]
+    KEY_PATH = os.environ["KEY_PATH"]
+    CA_PATH = os.environ["CA_CERTIFICATE_PATH"]
+    REMOTE_HOST = os.environ["REMOTE_HOST"]
+    if not (CERTIFICATE_PATH and KEY_PATH and CA_PATH and REMOTE_HOST):
+        print("ERROR: all required environment variables must be set.")
+        print("CERTIFICATE_PATH = Path of the certificate used for TLS")
+        print("KEY_PATH = Path of the CERTIFICATE_PATHs corresponding key")
+        print("CA_PATH = Path of the CA certificate that signed the certificate at CERTIFICATE_PATH")
+        print("REMOTE_HOST = The IP to connect to")
+        exit(1)
         
-        while True:
-            raw_socket, address = recv.accept()
-            remote = tls_context.wrap_socket(raw_socket, server_side=True)
+    print(f"CERTIFICATE_PATH={CERTIFICATE_PATH}")
+    print(f"KEY_PATH={KEY_PATH}")
+    print(f"CA_PATH={CA_PATH}")
+    print(f"REMOTE_HOST={REMOTE_HOST}")
 
-            with remote:
-                print(f"Incoming connection from {address}")
-                while True:
-                    data = remote.recv(1024)
-                    if not data:
-                        break
-                    print(f"Received data block from {address}. Discarding it.")
+    print("Creating TLS context..")
+    tls_context = create_tls_context(CERTIFICATE_PATH, KEY_PATH, CA_PATH)
 
-def start_tcp_listeners(ip, ports, cert_path, key_path, ca_path):
-    for port in ports:
-        thread = threading.Thread(target=start_listener, args=(ip, port, cert_path, key_path, ca_path))
-        thread.start()
+    server_host = REMOTE_HOST
+    server_ports = [9000, 9001, 18510]
 
+    print("Connecting on ports: " + ', '.join(str(port) for port in server_ports))
+    for port in server_ports:
+        threading.Thread(target=tls_connect_and_send_periodically, 
+                         args=(server_host, port, tls_context, f"Sending some data on port {port}", 1000)).start()
 
-# Make sure certificate paths have been passed
-CERTIFICATE_PATH = os.environ["CERTIFICATE_PATH"]
-KEY_PATH = os.environ["KEY_PATH"]
-CA_PATH = os.environ["CA_PATH"]
-
-if not (CERTIFICATE_PATH and KEY_PATH and CA_PATH):
-    print("All environment variables must be set.")
-    print("CERTIFICATE_PATH = Path for the certificate file for this container")
-    print("KEY_PATH = Path for the certificates corresponding key file")
-    print("CA_PATH = Path for the CA certificate that signed the certificate at CERTIFICATE_PATH")
-    exit(1)
+if __name__ == "__main__":
+    main()
     
-tcp_ports = [9000, 9001, 18510]
-start_tcp_listeners("0.0.0.0", tcp_ports, CERTIFICATE_PATH, KEY_PATH, CA_PATH)
-
-## DTLS doesn't seem to be supported in the SSL package.
-# udp_ports = [18511]

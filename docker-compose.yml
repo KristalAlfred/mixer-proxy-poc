@@ -1,6 +1,41 @@
+version: '3.8'
+services:
+  proxy:
+    image: proxy-poc-proxy
+    environment:
+      APPLICATION_HOST: mixer
+    build:
+      context: .
+      dockerfile: ./proxy/Dockerfile
+    networks:
+      - studio
+      - outside
+    depends_on:
+      - mixer
 
+  service:
+    image: proxy-poc-service
+    environment:
+      REMOTE_HOST: proxy
+    build:
+      context: .
+      dockerfile: ./service/Dockerfile
+    networks:
+      - outside
+    depends_on:
+      - proxy
+
+  mixer:
+    image: proxy-poc-mixer
+    build:
+      context: .
+      dockerfile: ./mixer/Dockerfile
+    networks:
+      - studio
 
 ## Networks
 networks:
   studio:
+    driver: bridge
   outside:
+    driver: bridge
