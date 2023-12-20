@@ -13,10 +13,11 @@ def start_tcp_listener(ip, port):
             with remote:
                 print(f"Incoming connection from {address}")
                 while True:
-                    data = remote.recv(1024)
+                    data = remote.recv(64)
                     if not data:
                         break
-                    print(f"Received data block from {address}. Discarding it.")
+                    print(f"Received data block from {address}. Sending it back.")
+                    remote.sendall(data)
 
 def start_udp_listener(ip, port):
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as recv:

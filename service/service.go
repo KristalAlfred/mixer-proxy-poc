@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"net"
 	"os"
@@ -50,7 +51,7 @@ func main() {
 		ServerName:   remoteHost,
 	}
 
-	serverPorts := []string{"9000", "9001", "18510"}
+	serverPorts := []string{"9000" /*, "9001", "18510" */}
 	fmt.Println("Connecting on ports: " + strings.Join(serverPorts, ", "))
 
 	for _, port := range serverPorts {
@@ -74,14 +75,49 @@ func tlsConnectAndSendPeriodically(host, port string, config *tls.Config) {
 	defer conn.Close()
 
 	fmt.Printf("Connected to %s\n", address)
-	for {
-		message := fmt.Sprintf("Sending some data on port %s", port)
-		_, err := conn.Write([]byte(message))
-		if err != nil {
-			fmt.Printf("Error sending message: %v\n", err)
-			return
+
+	output := make(chan string)
+
+	// Read stuff from the connection
+	go func(output chan<- string) {
+		for {
+			buffer := make([]byte, 1024)
+			n, err := conn.Read(buffer)
+			if err != nil {
+				if err != io.EOF {
+					fmt.Printf("Error reading from connection: %v\n", err)
+				}
+				return
+			}
+			data := string(buffer[:n])
+			fmt.Printf("Received from %s: %s\n", address, data)
 		}
-		fmt.Printf("Sent message to %s\n", address)
-		time.Sleep(1000 * time.Millisecond)
-	}
+	}(output)
+
+	// Write stuff periodically
+	go func(output chan<- string) {
+		for {
+			message := fmt.Sprintf("Sending some data to port %s!", port)
+			_, err := conn.Write([]byte(message))
+			if err != nil {
+				fmt.Printf("Error sending message: %v\n", err)
+				return
+			}
+			fmt.Printf("Sent message to %s: %s\n", address, message)
+			time.Sleep(2000 * time.Millisecond)
+		}
+	}(output)
+
+	// Print stuff (Println doesn't lock so it becomes messy with several threads)
+	go func(output <-chan string) {
+		for {
+			str := <-output
+			fmt.Println(str)
+		}
+	}(output)
+
+	shutdownChannel := make(chan os.Signal, 1)
+	signal.Notify(shutdownChannel, syscall.SIGTERM, syscall.SIGINT)
+	<-shutdownChannel
+	fmt.Println("Exiting..")
 }
