@@ -17,11 +17,15 @@ The PoC consists of:
 ## Build & Run
 To build the docker images, it should be enough to just run:
 
-```docker compose build``` 
+```
+docker compose build
+``` 
 
 Similarly, to start the PoC just run:
 
-```docker compose up```
+```
+docker compose up
+```
 
 ## Certificates
 To properly encrypt the connections between the proxy and service, we need some certificates. In this project we just use a self-signed CA that we trust in both proxy and service. This self-signed CA also issues the certificates these two containers use. Below are the commands to generate the certificates. We'll use `openssl` which is shipped with git and usually found in `C:\Program Files\Git\usr\bin` on Windows.
