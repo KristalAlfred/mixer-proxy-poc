@@ -21,7 +21,12 @@ To build the docker images, it should be enough to just run:
 docker compose build
 ``` 
 
-Similarly, to start the PoC just run:
+Sometimes, when messing around with the certificates, it seemed like docker didn't notice stuff was updated. In those cases, it helped to ignore cache when building:
+```
+docker compose build --no-cache
+```
+
+To start the PoC, just run:
 
 ```
 docker compose up
